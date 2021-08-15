@@ -108,32 +108,42 @@ namespace Ana
             };
             if (openFileDialog.ShowDialog() == true)
             {
-                var tab = NewTab();
-                tab.Tag = openFileDialog.FileName;
-                tab.Header = Path.GetFileName(openFileDialog.FileName);
-
-                var canvas = tab.Content as MoveableCanvas;
-                LoadBoard(canvas, openFileDialog.FileName);
+                LoadBoard(openFileDialog.FileName);
             }
         }
 
         /// <summary>
         /// Load board from json file
         /// </summary>
-        /// <param name="canvas"></param>
         /// <param name="loadFile"></param>
-        private void LoadBoard(MoveableCanvas canvas, string loadFile)
+        private void LoadBoard(string loadFile)
         {
-            string jsonString = File.ReadAllText(loadFile);
-            var data = JsonSerializer.Deserialize<NoteBoard>(jsonString);
-            canvas.Transform = data.Transform;
-
-            int noteCount = Math.Min(data.Texts.Count, data.Positions.Count);
-            for (int i = 0; i < noteCount; ++i)
+            if (File.Exists(loadFile))
             {
-                var newNote = AddNote(canvas, data.Positions[i], false);
-                newNote.Text = data.Texts[i];
-                newNote.IsReadOnly = true;
+                string jsonString = File.ReadAllText(loadFile);
+                try
+                {
+                    var data = JsonSerializer.Deserialize<NoteBoard>(jsonString);
+
+                    var tab = NewTab();
+                    tab.Tag = loadFile;
+                    tab.Header = Path.GetFileName(loadFile);
+
+                    var canvas = tab.Content as MoveableCanvas;
+                    canvas.Transform = data.Transform;
+
+                    int noteCount = Math.Min(data.Texts.Count, data.Positions.Count);
+                    for (int i = 0; i < noteCount; ++i)
+                    {
+                        var newNote = AddNote(canvas, data.Positions[i], false);
+                        newNote.Text = data.Texts[i];
+                        newNote.IsReadOnly = true;
+                    }
+                }
+                catch (JsonException exception)
+                {
+                    MessageBox.Show(exception.ToString(), "Failed to parse file", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
         }
 
@@ -399,6 +409,50 @@ namespace Ana
         private void Close_Executed(object sender, ExecutedRoutedEventArgs e)
         {
             this.Close();
+        }
+
+        /// <summary>
+        /// Drop files to open as new tab
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void Window_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+                foreach (string file in files) {
+                    LoadBoard(file);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Load tabs from Settings
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            foreach (string tab in Properties.Settings.Default.Tabs)
+            {
+                LoadBoard(tab);
+            }
+        }
+
+        /// <summary>
+        /// Store open tabs to Settings
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void Window_Closed(object sender, EventArgs e)
+        {
+            Properties.Settings.Default.Tabs.Clear();
+            foreach (TabItem tab in tcNotes.Items)
+            {
+                Properties.Settings.Default.Tabs.Add(tab.Tag as string);
+            }
+            Properties.Settings.Default.Save();
         }
     }
 }
