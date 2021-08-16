@@ -5,13 +5,14 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Ana"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800" AllowDrop="True" Drop="Window_Drop" Loaded="Window_Loaded" Closed="Window_Closed">
+        Title="MainWindow" Height="450" Width="800" AllowDrop="True" Drop="Window_Drop" Loaded="Window_Loaded" Closed="Window_Closed" Closing="Window_Closing">
     <Window.CommandBindings>
         <CommandBinding Command="New" CanExecute="CommonCommandBinding_CanExecute" Executed="New_Executed" />
         <CommandBinding Command="Open" CanExecute="CommonCommandBinding_CanExecute" Executed="Open_Executed" />
         <CommandBinding Command="Save" CanExecute="Save_CanExecute" Executed="Save_Executed" />
         <CommandBinding Command="SaveAs" CanExecute="Save_CanExecute" Executed="SaveAs_Executed" />
-        <CommandBinding Command="Close" CanExecute="CommonCommandBinding_CanExecute" Executed="Close_Executed" />
+        <CommandBinding Command="local:Command.SaveAll" CanExecute="Save_CanExecute" Executed="SaveAll_Executed"/>
+        <CommandBinding Command="local:Command.Exit"  CanExecute="CommonCommandBinding_CanExecute" Executed="Close_Executed" />
     </Window.CommandBindings>
     <Window.Resources>
         <ContextMenu x:Key="cmCanvasAdd">
@@ -31,8 +32,9 @@
                 <MenuItem Header="_New" Command="New" />
                 <MenuItem Header="_Open" Command="Open" />
                 <MenuItem Header="_Save" Command="Save" />
-                <MenuItem Header="_SaveAs" Command="SaveAs" />
-                <MenuItem Header="_Exit" Command="Close"/>
+                <MenuItem Header="_Save As..." Command="SaveAs" />
+                <MenuItem Header="_Save All" Command="local:Command.SaveAll" />
+                <MenuItem Header="_Exit" Command="local:Command.Exit"/>
             </MenuItem>
         </Menu>
         <ToolBarTray DockPanel.Dock="Top">
@@ -40,6 +42,7 @@
                 <Button Command="New" Content="New" />
                 <Button Command="Open" Content="Open" />
                 <Button Command="Save" Content="Save" />
+                <Button Command="local:Command.SaveAll" Content="Save All" />
             </ToolBar>
         </ToolBarTray>
         <TabControl x:Name="tcNotes" DockPanel.Dock="Top">

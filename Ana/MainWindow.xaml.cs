@@ -5,7 +5,6 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 
 namespace Ana
 {
@@ -22,8 +21,6 @@ namespace Ana
         // catch canvas right clicks
         private MoveableCanvas canvasRightClicked;
         private Point rightClickPos;
-
-        private static readonly Thickness NOTE_PADDING = new Thickness(10);
 
         public MainWindow()
         {
@@ -48,38 +45,18 @@ namespace Ana
         /// <param name="e"></param>
         private void New_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            NewTab();
+            tcNotes.SelectedItem = NoteBoardTabItem.NewTab(this);
         }
 
         /// <summary>
-        /// Create a new note board
+        /// Add event listener for given canvas
         /// </summary>
-        /// <returns></returns>
-        private TabItem NewTab()
+        /// <param name="canvas"></param>
+        internal void RegisterCanvas(MoveableCanvas canvas)
         {
-            MoveableCanvas canvas = new MoveableCanvas
-            {
-                Background = Brushes.Black,
-                ContextMenu = this.FindResource("cmCanvasAdd") as ContextMenu,
-                Focusable = true,
-                ClipToBounds = true
-            };
             canvas.MouseLeftButtonDown += Canvas_OnMouseLeftButtonDown;
             canvas.PreviewMouseRightButtonDown += Canvas_OnPreviewMouseRightButtonDown;
             canvas.MouseWheel += Canvas_OnMouseWheel;
-
-            TabItem newTabItem = new TabItem
-            {
-                Header = "New",
-                Tag = null,
-                ContextMenu = this.FindResource("cmTab") as ContextMenu,
-                Content = canvas
-            };
-
-            tcNotes.Items.Add(newTabItem);
-            tcNotes.SelectedItem = newTabItem;
-
-            return newTabItem;
         }
 
 
@@ -90,7 +67,7 @@ namespace Ana
         /// <param name="e"></param>
         private void CloseTab_Click(object sender, RoutedEventArgs e)
         {
-            var target = ((sender as MenuItem).Parent as ContextMenu).PlacementTarget as TabItem;
+            var target = ((sender as MenuItem).Parent as ContextMenu).PlacementTarget as NoteBoardTabItem;
             tcNotes.Items.Remove(target);
         }
 
@@ -113,37 +90,26 @@ namespace Ana
         }
 
         /// <summary>
-        /// Load board from json file
+        /// LoadBoard helper to catch exceptions
         /// </summary>
-        /// <param name="loadFile"></param>
-        private void LoadBoard(string loadFile)
+        /// <param name="openFile"></param>
+        private void LoadBoard(string openFile)
         {
-            if (File.Exists(loadFile))
+            try
             {
-                string jsonString = File.ReadAllText(loadFile);
-                try
-                {
-                    var data = JsonSerializer.Deserialize<NoteBoard>(jsonString);
-
-                    var tab = NewTab();
-                    tab.Tag = loadFile;
-                    tab.Header = Path.GetFileName(loadFile);
-
-                    var canvas = tab.Content as MoveableCanvas;
-                    canvas.Transform = data.Transform;
-
-                    int noteCount = Math.Min(data.Texts.Count, data.Positions.Count);
-                    for (int i = 0; i < noteCount; ++i)
-                    {
-                        var newNote = AddNote(canvas, data.Positions[i], false);
-                        newNote.Text = data.Texts[i];
-                        newNote.IsReadOnly = true;
-                    }
-                }
-                catch (JsonException exception)
-                {
-                    MessageBox.Show(exception.ToString(), "Failed to parse file", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
+                tcNotes.SelectedItem = NoteBoardTabItem.LoadBoard(this, openFile);
+            }
+            catch (JsonException exception)
+            {
+                MessageBox.Show(exception.ToString(), "Failed to parse file", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            catch (FileNotFoundException)
+            {
+                MessageBox.Show("Could not find file: " + openFile, "File not found", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(exception.ToString(), "Failed to open file", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -154,7 +120,7 @@ namespace Ana
         /// <param name="e"></param>
         private void Save_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            SaveTab(tcNotes.SelectedItem as TabItem, false);
+            SaveTab(tcNotes.SelectedItem as NoteBoardTabItem, false);
         }
 
         /// <summary>
@@ -164,7 +130,7 @@ namespace Ana
         /// <param name="e"></param>
         private void SaveAs_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            SaveTab(tcNotes.SelectedItem as TabItem, true);
+            SaveTab(tcNotes.SelectedItem as NoteBoardTabItem, true);
         }
 
         /// <summary>
@@ -172,11 +138,10 @@ namespace Ana
         /// </summary>
         /// <param name="tab"></param>
         /// <param name="saveAs">Force SaveFileDialog</param>
-        private void SaveTab(TabItem tab, bool saveAs)
+        /// <returns>true iff saved successfully</returns>
+        private bool SaveTab(NoteBoardTabItem tab, bool saveAs)
         {
-            var canvas = tab.Content as MoveableCanvas;
-
-            if (!(tab.Tag is string) || saveAs)
+            if (tab.SaveFile == null || saveAs)
             {
                 SaveFileDialog saveFileDialog = new SaveFileDialog
                 {
@@ -185,37 +150,42 @@ namespace Ana
                 };
                 if (saveFileDialog.ShowDialog() == true)
                 {
-                    tab.Tag = saveFileDialog.FileName;
-                    tab.Header = Path.GetFileName(saveFileDialog.FileName);
+                    tab.SaveFile = saveFileDialog.FileName;
                 }
                 else
                 {
-                    return;
+                    return false;
                 }
             }
 
-            SaveBoard(canvas, tab.Tag as string);
+            tab.SaveBoard();
+            return true;
         }
 
         /// <summary>
-        /// Save notes into a json file
+        /// Save all open tabs command
         /// </summary>
-        /// <param name="canvas"></param>
-        /// <param name="saveFile"></param>
-        private static void SaveBoard(MoveableCanvas canvas, string saveFile)
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void SaveAll_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            NoteBoard data = new NoteBoard
-            {
-                Transform = canvas.Transform
-            };
-            foreach (var child in canvas.MoveableChildren)
-            {
-                data.Texts.Add((child.Element as TextBox).Text);
-                data.Positions.Add(child.Position);
-            }
+            SaveAll();
+        }
 
-            string jsonString = JsonSerializer.Serialize(data);
-            File.WriteAllText(saveFile, jsonString);
+        /// <summary>
+        /// Save all open tabs
+        /// </summary>
+        /// <returns>true iff all tabs successfully saved</returns>
+        private bool SaveAll()
+        {
+            foreach (NoteBoardTabItem tab in tcNotes.Items)
+            {
+                if (!SaveTab(tab, false))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         /// <summary>
@@ -249,7 +219,9 @@ namespace Ana
         {
             var note = sender as TextBox;
             if (note.IsReadOnly)
+            {
                 StartDragging(note, e.GetPosition(this));
+            }
         }
 
         /// <summary>
@@ -315,9 +287,8 @@ namespace Ana
                 }
                 else
                 {
-                    var tab = tcNotes.SelectedItem as TabItem;
-                    var canvas = tab.Content as MoveableCanvas;
-                    canvas.TranslateChild(draggedObject, offsetX, offsetY);
+                    var tab = tcNotes.SelectedItem as NoteBoardTabItem;
+                    tab.Canvas.TranslateChild(draggedObject, offsetX, offsetY);
                 }
 
                 lastMousePos = pos;
@@ -331,33 +302,19 @@ namespace Ana
         /// <param name="e"></param>
         private void MenuItemAdd_Click(object sender, RoutedEventArgs e)
         {
-            var newNote = AddNote(canvasRightClicked, rightClickPos);
+            var newNote = (tcNotes.SelectedItem as NoteBoardTabItem).AddNote(rightClickPos);
             newNote.Focus();
         }
 
         /// <summary>
-        /// Add a empty note to a canvas
+        /// Add event listener for given note
         /// </summary>
-        /// <param name="canvas"></param>
-        /// <param name="position"></param>
-        /// <param name="transformedPosition">true iff position is given in transformed space</param>
-        /// <returns></returns>
-        private TextBox AddNote(MoveableCanvas canvas, Point position, bool transformedPosition = true)
+        /// <param name="note"></param>
+        internal void RegisterNote(TextBox note)
         {
-            var newNote = new TextBox
-            {
-                Background = Brushes.White,
-                ContextMenu = this.FindResource("cmCanvasSelected") as ContextMenu,
-                AcceptsReturn = true,
-                Padding = NOTE_PADDING
-            };
-
-            newNote.PreviewMouseLeftButtonDown += Note_OnMouseLeftButtonDown;
-            newNote.KeyDown += Note_KeyDown;
-            newNote.LostKeyboardFocus += Note_LostKeyboardFocus;
-
-            canvas.AddChild(newNote, position, transformedPosition);
-            return newNote;
+            note.PreviewMouseLeftButtonDown += Note_OnMouseLeftButtonDown;
+            note.KeyDown += Note_KeyDown;
+            note.LostKeyboardFocus += Note_LostKeyboardFocus;
         }
 
         /// <summary>
@@ -448,11 +405,67 @@ namespace Ana
         private void Window_Closed(object sender, EventArgs e)
         {
             Properties.Settings.Default.Tabs.Clear();
-            foreach (TabItem tab in tcNotes.Items)
+            foreach (NoteBoardTabItem tab in tcNotes.Items)
             {
-                Properties.Settings.Default.Tabs.Add(tab.Tag as string);
+                if (tab.SaveFile != null)
+                {
+                    Properties.Settings.Default.Tabs.Add(tab.SaveFile);
+                }
             }
             Properties.Settings.Default.Save();
         }
+
+        /// <summary>
+        /// Check for unsaved note boards
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            foreach (NoteBoardTabItem tab in tcNotes.Items)
+            {
+                if (!tab.IsBoardSaved())
+                {
+                    var result = MessageBox.Show("Some note boards were not saved. Save all?", "Unsaved note boards", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+
+                    switch (result){
+                        case MessageBoxResult.Yes: // save all
+                            e.Cancel = !SaveAll(); // stop closing if save canceled
+                            return;
+                        case MessageBoxResult.No: // don't save
+                            return;
+                        default: // stop closing
+                            e.Cancel = true;
+                            return;
+                    }
+                }
+            }
+        }
+    }
+
+    public static class Command
+    {
+        public static readonly RoutedUICommand Exit = new RoutedUICommand
+        (
+            "Exit",
+            "Exit",
+            typeof(Command),
+            new InputGestureCollection()
+            {
+                new KeyGesture(Key.F4, ModifierKeys.Alt)
+            }
+        );
+
+        public static readonly RoutedUICommand SaveAll = new RoutedUICommand
+        (
+            "Save all",
+            "SaveAll",
+            typeof(Command),
+            new InputGestureCollection()
+            {
+                new KeyGesture(Key.S, ModifierKeys.Control | ModifierKeys.Shift)
+            }
+        );
+
     }
 }
